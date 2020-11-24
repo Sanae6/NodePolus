@@ -28,6 +28,8 @@ import {
 import { LimboState } from "../data/enums/limboState";
 import { ClientVersion } from "../packets/packetElements/clientVersion";
 import { SupportedVersions } from "./supportedVersions";
+import { ChatEvent } from "../events/chatEvent";
+import { ChatNoteEvent } from "../events/chatNoteEvent";
 
 let nullRoom = new Room();
 
@@ -38,6 +40,8 @@ type ConnectionEvents = Events & {
   close: () => Promise<void>;
   joinRoomRequest: (event: JoinRoomRequestEvent) => Promise<void>;
   joinRoom: (event: JoinRoomEvent) => Promise<void>;
+  chat: (event: ChatEvent) => Promise<void>;
+  chatNote: (event: ChatNoteEvent) => Promise<void>;
 };
 
 export class Connection extends AsyncEventEmitter<ConnectionEvents> {
@@ -50,7 +54,7 @@ export class Connection extends AsyncEventEmitter<ConnectionEvents> {
   room: Room;
   limbo: LimboState = LimboState.PreSpawn;
   isHost?: boolean;
-  private inGroup: boolean = false;
+  public inGroup: boolean = false;
   private helloRecieved: boolean = false;
   private groupArr: UnreliablePacketPacket[] = [];
   private packetGroupReliability: PacketType = PacketType.ReliablePacket;
@@ -71,7 +75,7 @@ export class Connection extends AsyncEventEmitter<ConnectionEvents> {
 
     this.on("message", async (msg: Buffer) => {
       if (msg[0] != 0x0a && msg[0] != 0x0c) {
-        console.log(msg.toString("hex"));
+        // console.log(msg.toString("hex"));
       }
       if (this.TEMPDONTUSE) return;
       this.TEMPDONTUSE = true;
@@ -104,9 +108,9 @@ export class Connection extends AsyncEventEmitter<ConnectionEvents> {
           this.room
         );
         // console.log("RawParsed", parsed)
-        // const serialized = new Packet(this.room, this.isToClient).serialize(parsed);
+        // const serialized = new Packet(!this.isToClient).serialize(parsed, this.room);
         // try {
-        //     if (packet.Type != PacketType.UnreliablePacket)assert.equal(serialized.buf.toString('hex'), msg.toString('hex'))
+        //     if (packet.Type != PacketType.UnreliablePacket) assert.equal(serialized.buf.toString('hex'), msg.toString('hex'))
         // } catch(err) {
         //     console.log("actual  ", serialized.buf.toString('hex'))
         //     console.log("expected", msg.toString('hex'))

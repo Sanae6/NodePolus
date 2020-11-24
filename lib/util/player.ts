@@ -1,4 +1,4 @@
-import { Vector2 } from "../packets/packetElements/vector2";
+import { Vector2 } from "../packets/packetElements/vector";
 import {
   PlayerColor,
   PlayerSkin,
@@ -35,13 +35,20 @@ export class Player extends AsyncEventEmitter<PlayerEvents> {
       (GO) => GO.ClientID == BigInt(this.connection?.ID)
     );
   }
-  get position(): Vector2 {
-    // TODO: do pos handling
-    return new Vector2(0, 0);
+  private int_position: Vector2 = new Vector2(0,0);
+  private int_velocity: Vector2 = new Vector2(0,0);
+  private positionSetTime: number|undefined;
+  get rawPosition(): Vector2 {
+    return this.int_position;
   }
-  get acceleration(): Vector2 {
-    // TODO: do accel handling
-    return new Vector2(0, 0);
+  get position(): Vector2 {
+    if(this.positionSetTime == undefined) {
+      return this.int_position
+    }
+    let c = new Vector2(this.int_position.x, this.int_position.y)
+    c.x += this.int_velocity.x * ((Date.now() - this.positionSetTime) / 1000);
+    c.y += this.int_velocity.y * ((Date.now() - this.positionSetTime) / 1000);
+    return c;
   }
   private int_color: PlayerColor;
   get color(): PlayerColor {
@@ -112,15 +119,18 @@ export class Player extends AsyncEventEmitter<PlayerEvents> {
     this.int_name = playerData.PlayerName;
     this.int_pet = Number(playerData.PetID);
     this.int_skin = Number(playerData.SkinID);
+    //@ts-ignore
     this.int_tasks = playerData.Tasks.map((taskData) => {
-      let t = new Task(Number(taskData.TaskID));
-      if (taskData.TaskCompleted) {
-        t.Complete();
-      } else {
-        t.Uncomplete();
+      if(this.connection) {
+        let t = new Task(Number(taskData.TaskID), this.connection?.room);
+        if (taskData.TaskCompleted) {
+          t.Complete();
+        } else {
+          t.Uncomplete();
+        }
+        return t;
       }
-      return t;
-    });
+    }).filter(a => a);
   }
 
   enterVent() {}
@@ -151,6 +161,7 @@ export class Player extends AsyncEventEmitter<PlayerEvents> {
         return { TaskID: BigInt(t.ID), TaskCompleted: t.complete };
       }),
     };
+    console.log(thisPlayerData)
     this.connection?.room.broadcastToAll({
       type: "GameData",
       RoomCode: this.connection.room.code,
