@@ -1,3 +1,4 @@
+import { EventEmitter } from "events";
 import * as randomstring from "randomstring";
 
 import { Connection } from "./connection";
@@ -8,7 +9,7 @@ import { IGameObject } from "./gameObject";
 import { GameDataPacketType } from "../packets/subpackets/gameData";
 
 import { addr2str } from "./misc";
-import { RPCPacketType, RPC } from "../packets/subpackets/gameDataPackets/rpc";
+import { RPCPacketType } from "../packets/subpackets/gameDataPackets/rpc";
 import { DisconnectReason } from "../packets/packetElements/disconnectReason";
 import { PolusBuffer } from "./polusBuffer";
 import { DataPacket } from "../packets/subpackets/gameDataPackets/data";
@@ -22,25 +23,12 @@ import { GameState } from "../data/enums/gameState";
 import { LimboState } from "../data/enums/limboState";
 //@ts-ignore
 import { Game } from "./game";
-import { SetInfectedPacket } from "../packets/subpackets/gameDataPackets/rpcPackets/setInfected";
-import { SendChatPacket } from "../packets/subpackets/gameDataPackets/rpcPackets/sendChat";
-import { ChatEvent } from "../events/chatEvent";
-import { AsyncEventEmitter, Events } from "./asyncEventEmitter";
-import { AssignedImpostorsEvent } from "../events/assignedImpostors";
-import { SendChatNotePacket } from "../packets/subpackets/gameDataPackets/rpcPackets/sendChatNote";
-import { ChatNoteEvent } from "../events/chatNoteEvent";
-import { SetTasksPacket } from "../packets/subpackets/gameDataPackets/rpcPackets/setTasks";
-import { AssignedTasksEvent } from "../events/AssignedTasksEvent";
 
-type RoomEvents = Events & {
-  playerJoined: (evt: JoinRoomEvent) => Promise<void>;
-  AssignedImpostors: (evt: AssignedImpostorsEvent) => Promise<void>;
-  chat: (evt: ChatEvent) => Promise<void>;
-  chatNote: (evt: ChatNoteEvent) => Promise<void>;
-  close: () => Promise<void>;
-};
+export declare interface Room {
+  on(event: "close" | "playerJoined", listener: Function): this;
+}
 
-export class Room extends AsyncEventEmitter<RoomEvents> {
+export class Room extends EventEmitter {
   constructor() {
     super();
     this.internalCode = randomstring.generate({
@@ -120,7 +108,7 @@ export class Room extends AsyncEventEmitter<RoomEvents> {
   get host(): Connection | undefined {
     return this.connections.find((con) => con.isHost);
   }
-  async handlePacket(packet: Subpacket, connection: Connection) {
+  handlePacket(packet: Subpacket, connection: Connection) {
     switch (packet.type) {
       case "EndGame":
         this.gameState = GameState.Ended;
@@ -187,8 +175,7 @@ export class Room extends AsyncEventEmitter<RoomEvents> {
           });
           break;
         }
-        for (let _i = 0; _i < packet.Packets.length; _i++) {
-          const GDPacket = packet.Packets[_i];
+        packet.Packets = packet.Packets.filter((GDPacket) => {
           if (GDPacket.type == GameDataPacketType.Spawn) {
             if (
               Number(GDPacket.SpawnID) == ObjectType.Player &&
@@ -211,58 +198,6 @@ export class Room extends AsyncEventEmitter<RoomEvents> {
             }
           }
           if (GDPacket.type == GameDataPacketType.RPC) {
-            if (GDPacket.RPCFlag == RPCPacketType.SetInfected) {
-              this.startPacketGroupBroadcastToAll();
-              let cons = this.connections.filter((con) =>
-                (<SetInfectedPacket>GDPacket.Packet).InfectedPlayerIDs.includes(
-                  BigInt(con.player?.ID)
-                )
-              )
-              cons.forEach(con => con.player?.setImpostor())
-              this.endPacketGroupBroadcastToAll();
-              //@ts-ignore
-              await this.emit("AssignedImpostors", new AssignedImpostorsEvent(cons.map(con => con.player)))
-              await cons.forEach(async con => {
-                await con.player?.emit("AssignedImpostor")
-              })
-              delete packet.Packets[_i]
-            }
-            if(GDPacket.RPCFlag == RPCPacketType.SetTasks) {
-              let pd = <SetTasksPacket>GDPacket.Packet
-              let player = this.connections.find(c => c.player?.ID == pd.PlayerID)?.player
-              if(player) {
-                player.setTasks(pd.Tasks.map(t => {
-                  return new Task(t, this)
-                }))
-                player.emit("AssignedTasks", new AssignedTasksEvent(player.tasks))
-              } else {
-                throw new Error("Missing Player");
-              }
-            }
-            if (GDPacket.RPCFlag == RPCPacketType.SendChat) {
-              let pd = <SendChatPacket>GDPacket.Packet
-              if(connection.player) {
-                let ce = new ChatEvent(pd.ChatText, connection.player);
-                await this.emit("chat", ce)
-                await connection.emit("chat", ce)
-                if(ce.isCanceled) {
-                  delete packet.Packets[_i]
-                }
-              } else {
-                throw new Error("Connection without player sent a chat.")
-              }
-            }
-            if(GDPacket.RPCFlag == RPCPacketType.SendChatNote) {
-              let pd = <SendChatNotePacket>GDPacket.Packet
-              let player = this.connections.find(c => c.player?.ID == pd.PlayerID)?.player
-              if(player) {
-                let ce = new ChatNoteEvent(pd.ChatNoteType, player)
-                this.emit("chatNote", ce)
-                player.connection?.emit('chatNote', ce)
-              } else {
-                throw new Error("Missing Player")
-              }
-            }
             if (GDPacket.RPCFlag == RPCPacketType.UpdateGameData) {
               let pd = (<UpdateGameDataPacket>GDPacket.Packet).PlayerData;
               if (connection.isHost && pd[0].PlayerName != "") {
@@ -283,9 +218,9 @@ export class Room extends AsyncEventEmitter<RoomEvents> {
                       connection.player,
                       this
                     );
-                    process.nextTick(async (connection: Connection) => {
-                      await connection.emit("joinRoom", joinRoomEvent);
-                      await this.emit("playerJoined", joinRoomEvent);
+                    process.nextTick((connection: Connection) => {
+                      connection.emit("joinRoom", joinRoomEvent);
+                      this.emit("playerJoined", joinRoomEvent);
                       if (joinRoomEvent.isCanceled) {
                         connection.disconnect();
                       }
@@ -321,7 +256,7 @@ export class Room extends AsyncEventEmitter<RoomEvents> {
                       connection.player.revive();
                     }
                     this.endPacketGroupBroadcastToAll();
-                    delete packet.Packets[_i];
+                    return false;
                   }
                 } else {
                   throw new Error("Data recieved for an undefined connection");
@@ -357,7 +292,8 @@ export class Room extends AsyncEventEmitter<RoomEvents> {
               }
             });
           }
-        };
+          return true;
+        });
         if (packet.Packets.length == 0) {
           break;
         }
@@ -365,11 +301,7 @@ export class Room extends AsyncEventEmitter<RoomEvents> {
           this.connections
             .filter((conn) => BigInt(conn.ID) == packet.RecipientClientID)
             .forEach((recipient) => {
-              if(packet.Packets[0].type == GameDataPacketType.Data && packet.Packets[0].Component.Data?.type == "CustomTransformData") {
-                recipient.sendUnreliable(packet)
-              } else {
-                recipient.send(packet)
-              }
+              recipient.send(packet);
             });
 
           break;

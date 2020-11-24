@@ -1,7 +1,4 @@
 import { AsyncEventEmitter, Events } from "./asyncEventEmitter";
-import { Room } from "./room";
-import StaticPolusData from "../data/mapData/polus"
-import { StaticTaskData, Collider, TaskLength } from "../data/mapData/types";
 
 type TaskEvents = Events & {
   completed: () => Promise<void>;
@@ -11,24 +8,9 @@ type TaskEvents = Events & {
 export class Task extends AsyncEventEmitter<TaskEvents> {
   complete: boolean = false;
   ID: number;
-  collider: Collider;
-  isVisual: boolean;
-  length: TaskLength;
-  name: string;
-  stepCount: number;
 
-  constructor(ID: number, public room: Room) {
+  constructor(ID: number) {
     super();
-    let rawTask = StaticPolusData.tasks.find(task => task.id == ID);
-    if(rawTask) {
-      this.collider = new Collider(rawTask.collider)
-      this.stepCount = rawTask.stepCount
-      this.isVisual = rawTask.isVisual
-      this.length = rawTask.length
-      this.name = rawTask.name
-    } else {
-      throw new Error("Invalid TaskID " + ID)
-    }
     this.ID = ID;
   }
 

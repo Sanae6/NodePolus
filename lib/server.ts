@@ -108,7 +108,7 @@ export class Server extends AsyncEventEmitter<ServerEvents> {
             type: "SetGameCode",
             RoomCode: room.code,
           });
-          room.on("close", async () => {
+          room.on("close", () => {
             this.rooms.delete(room.code);
           });
         }

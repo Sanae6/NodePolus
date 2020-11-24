@@ -119,18 +119,15 @@ export class Player extends AsyncEventEmitter<PlayerEvents> {
     this.int_name = playerData.PlayerName;
     this.int_pet = Number(playerData.PetID);
     this.int_skin = Number(playerData.SkinID);
-    //@ts-ignore
     this.int_tasks = playerData.Tasks.map((taskData) => {
-      if(this.connection) {
-        let t = new Task(Number(taskData.TaskID), this.connection?.room);
-        if (taskData.TaskCompleted) {
-          t.Complete();
-        } else {
-          t.Uncomplete();
-        }
-        return t;
+      let t = new Task(Number(taskData.TaskID));
+      if (taskData.TaskCompleted) {
+        t.Complete();
+      } else {
+        t.Uncomplete();
       }
-    }).filter(a => a);
+      return t;
+    });
   }
 
   enterVent() {}
